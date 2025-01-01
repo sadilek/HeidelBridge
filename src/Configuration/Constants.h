@@ -85,7 +85,7 @@ namespace Constants
 
     namespace MQTT
     {
-        constexpr bool Enabled = true;
+        constexpr bool Enabled = false;
         constexpr uint16_t Port = 1883;
         constexpr uint16_t PublishIntervalMs = 500;
     };
