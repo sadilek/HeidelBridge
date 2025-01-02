@@ -17,6 +17,8 @@ namespace WifiConnection
     {
         Logger::Info("WiFi connected");
         Logger::Info("IP address: %s", WiFi.localIP().toString().c_str());
+        // Turn off second LED as debugging feedback.
+        digitalWrite(2, LOW);
     }
 
     void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info)
@@ -35,6 +37,9 @@ namespace WifiConnection
         // Delete old config
         Logger::Trace("Preparing Wifi");
         WiFi.disconnect(true);
+        // Turn on second LED as debugging feedback.
+        pinMode(2, OUTPUT);
+        digitalWrite(2, HIGH);
         delay(100);
 
         // Set host name
