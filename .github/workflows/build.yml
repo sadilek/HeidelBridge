@@ -34,4 +34,10 @@ jobs:
         run: pip install --upgrade platformio
 
       - name: Build HeidelBridge
-        run: pio run -e heidelberg
+        run: pio run -e esp32
+
+      - name: Upload Firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: .pio/build/esp32/firmware.bin

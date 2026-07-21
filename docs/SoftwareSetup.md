@@ -12,6 +12,7 @@ Follow these steps to turn your ESP32 into a HeidelBridge. This has to be done o
 ### Fixing Connection Issues
 
 If you cannot connect to your ESP32 via WebSerial, these hints might help:
+
 - Use a USB data cable! Make sure you use a cable that transfers power and data and is not for charging only.
 - On Windows, make sure you have installed the serial port drivers for your ESP32. It should appear as a COM port in the Windows Device Manager.
 - On Linux, make sure you have added your user to the required user groups (e.g. `sudo usermod -aG dialout $USER` for Ubuntu, `sudo usermod -aG uucp,lock $USER` for Arch)
@@ -56,3 +57,31 @@ Then follow these steps:
 - Now connect your ESP32 via USB.
 - Upload the file system image.
 - Upload the firmware.
+
+## Build Environments
+
+HeidelBridge supports two build environments:
+
+### Standard Build (`esp32`)
+
+This is the default build for production use with either a Generic ESP32 + MAX485 module or a LilyGo T-CAN485 board.
+
+**To compile:**
+
+```bash
+pio run
+```
+
+**Hardware selection:**
+
+The hardware type is selected in the web interface during initial setup. After flashing, connect to the captive portal (`HeidelBridge Setup`) and choose either "Generic ESP32 + MAX485" or "LilyGo T-CAN485" under the Hardware section.
+
+### Dummy Wallbox (`dummy`)
+
+This build environment creates a simulation mode for testing without actual wallbox hardware.
+
+**To compile:**
+
+```bash
+pio run -e dummy
+```

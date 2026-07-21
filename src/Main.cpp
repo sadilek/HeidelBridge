@@ -13,6 +13,8 @@
 #include "Components/Wallbox/HeidelbergWallbox.h"
 #include "Components/MQTT/MQTTManager.h"
 #include "Components/AsyncDelay/AsyncDelay.h"
+#include "Boards/Board.h"
+#include "Boards/BoardFactory.h"
 
 IWallbox *gWallbox{nullptr};
 AsyncDelay gUptimeCounter(Constants::General::MillisPerSecond);
@@ -41,6 +43,12 @@ void setup()
   Settings::Instance()->Init();
   Settings::Instance()->ReadFromPersistentMemory();
   Settings::Instance()->Print();
+
+  // Prepare the board
+  auto* board = BoardFactory::Instance()->GetBoard();
+  Logger::Print("Used hardware board:");
+  board->Print();
+  board->Init();
 
   // Make sure WiFi connection is up and running
   WifiManager::Instance()->Start();
