@@ -44,14 +44,26 @@ Kandidaten für einen PR an Boris — reine Bugs, unabhängig von der evcc-Disku
   gesendet. Ohne Retain findet ein neu startendes HA nichts unter `homeassistant/+/+/config`;
   alles mit `command_topic` (beide Switches + Number) bleibt `unavailable`, bis der ESP zufällig
   reconnected. Sensoren überleben, weil sie laufend State publishen.
-- **MQTT-Payloads sind nicht nullterminiert** (`MQTTManager.cpp`): `String(payload, len)` reichte
-  nicht — `"ON"` wurde nie erkannt, jedes Kommando fiel in den Off-Zweig. `OFF` funktionierte nur
-  scheinbar, weil `false` das gewünschte Ergebnis war. Jetzt wird explizit in einen
-  nullterminierten Puffer kopiert.
 - **`SetChargingEnabled` war auf einen Zustandswechsel gegated** (`HeidelbergWallbox.cpp`):
   `mChargingEnabled` liegt nur im RAM und steht nach jedem Reboot auf `true`, während Register 261
   noch 0 hält → der Zweig, der beides synchronisieren würde, feuert nie. Schreibt jetzt bei **jedem**
   Aufruf; damit ist die Operation idempotent und selbstheilend (die HA-Automation reasserted alle 30 s).
+  Verschärfend: `GetChargingCurrentLimit()` überschreibt `mChargingCurrentLimitA` in jedem
+  Publish-Zyklus aus Register 261. Steht das auf 0, wird beim Ausschalten `mPrevious… = 0` gemerkt und
+  beim nächsten Einschalten 0 A wiederhergestellt — Laden „an", Strom 0.
+
+## Widerlegt — nicht nochmal „reparieren"
+
+- **MQTT-Payload-Parsing ist in Ordnung.** Kurzzeitig verdächtigt, `String(payload, len)` würde die
+  nicht nullterminierte Payload falsch behandeln und `"ON"` nie erkennen. Am 2026-08-03 mit einem
+  Diagnose-Build gemessen: `raw='ON' len=2 match=enable_charging parsed='ON' enabled=1`. Der
+  Konstruktor begrenzt korrekt, `setLen()` nullterminiert. Upstream-Code ist hier korrekt.
+  (Einzige echte Unsauberkeit: `String::copy` macht `memmove(cstr, length + 1)`, liest also ein Byte
+  über die Payload hinaus. `setLen()` überschreibt es — praktisch folgenlos.)
+- **Ungeklärt:** Beim ursprünglichen Debugging schaltete `turn_on` den Switch gar nicht um, obwohl
+  der Code das tun müsste. Nicht reproduziert. Verdächtig bleibt, dass `gMqttTopic`, `TopicBuffer`
+  und `PayloadBuffer` ohne Lock zwischen Publish-Timer-Task und MQTT-Callback-Task geteilt werden.
+  Bei `match=none` im Diagnose-Echo genau dort suchen.
 
 **Wichtig:** `unique_id`s nicht mehr ändern — HA legt sonst eine neue Entity an und die Historie geht
 verloren.

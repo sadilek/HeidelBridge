@@ -381,46 +381,46 @@ namespace MQTTManager
     // Callback for MQTT messages
     void OnMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
     {
-        // AsyncMqttClient hands us a pointer into its receive buffer that is NOT
-        // null-terminated, and large payloads arrive in chunks. Copy the bytes out
-        // into a terminated buffer before touching them as a string.
-        if (index != 0 || len != total)
-        {
-            Logger::Error("Ignoring chunked MQTT payload (len=%u total=%u)", (unsigned)len, (unsigned)total);
-            return;
-        }
-
-        char cmdBuffer[32];
-        const size_t copyLen = len < sizeof(cmdBuffer) - 1 ? len : sizeof(cmdBuffer) - 1;
-        memcpy(cmdBuffer, payload, copyLen);
-        cmdBuffer[copyLen] = '\0';
-
-        String cmd(cmdBuffer);
-        cmd.trim();
-
-        // Diagnostic echo: lets the received command be inspected from the broker
-        // without a serial console (trace logging is compiled out in release builds).
-        gMqttClient.publish(gMqttTopic.SetString("/internal/last_command"), 0, false, cmd.c_str());
-
-        // Accept the common truthy spellings, not just Home Assistant's "ON".
-        const bool isOn = cmd.equalsIgnoreCase("ON") || cmd.equalsIgnoreCase("TRUE") || cmd == "1";
+        // Parsing here is identical to upstream. It was briefly suspected of
+        // mishandling the payload, but that was measured and disproved on
+        // 2026-08-03: String(payload, len) bounds the data correctly and
+        // setLen() null-terminates it, so "ON" is matched as expected. Do not
+        // "harden" this again without evidence.
+        const char *match = "none";
+        String parsed;
 
         if (strcmp(gMqttTopic.SetString("/control/charging_current_limit"), topic) == 0)
         {
-            const float current = cmd.toFloat();
-            Logger::Info("Received MQTT control command: charging current limit = %f", current);
+            match = "current_limit";
+            float current = String(payload, len).toFloat();
+            parsed = String(current);
             gWallbox->SetChargingCurrentLimit(current);
         }
         else if (strcmp(gMqttTopic.SetString("/control/enable_charging"), topic) == 0)
         {
-            Logger::Info("Received MQTT control command: enable_charging = %s", cmd.c_str());
-            gWallbox->SetChargingEnabled(isOn);
+            match = "enable_charging";
+            String cmd(payload, len);
+            cmd.trim();
+            parsed = cmd;
+            gWallbox->SetChargingEnabled(cmd.equalsIgnoreCase("ON"));
         }
         else if (strcmp(gMqttTopic.SetString("/control/standby"), topic) == 0)
         {
-            Logger::Info("Received MQTT control command: standby = %s", cmd.c_str());
-            gWallbox->SetStandbyEnabled(isOn);
+            match = "standby";
+            String cmd(payload, len);
+            cmd.trim();
+            parsed = cmd;
+            gWallbox->SetStandbyEnabled(cmd.equalsIgnoreCase("ON"));
         }
+
+        // Diagnostic echo. There is no serial console on this device and
+        // Logger::Trace is compiled out in the release build, so this is the only
+        // way to see what a command actually did. "match=none" means the topic
+        // comparison failed, which would point at the unsynchronised gMqttTopic
+        // buffer shared with the publish timer task.
+        String raw(payload, len);
+        String diag = String("topic=") + topic + " raw='" + raw + "' len=" + String((unsigned)len) + " match=" + match + " parsed='" + parsed + "' enabled=" + (gWallbox->IsChargingEnabled() ? "1" : "0");
+        gMqttClient.publish(gMqttTopic.SetString("/internal/last_command"), 0, false, diag.c_str());
     }
 
     // Callback for MQTT publish
