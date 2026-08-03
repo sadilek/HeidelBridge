@@ -74,6 +74,31 @@ Kandidaten für einen PR an Boris — reine Bugs, unabhängig von der evcc-Disku
 **Wichtig:** `unique_id`s nicht mehr ändern — HA legt sonst eine neue Entity an und die Historie geht
 verloren.
 
+## Hardware-Grenzen der Wallbox (gemessen 2026-08-03)
+
+- Die Wallbox **kappt selbst bei 10 A** (Hardware-Einstellung, passend zur 1-phasigen
+  Installation): Requests von 11/12/16 A landen alle als 10 A in Register 261, 6/8/9/10 A gehen
+  unverändert durch. `InitialChargingCurrentLimitA = 16` wirkt hier also faktisch als 10 A.
+- Nutzbares Band damit **6–10 A ≈ 1,38–2,30 kW** (1 Phase, 230 V).
+- Konsequenz für den Fallback in `SetChargingEnabled`: hier harmlos, weil die Wallbox ohnehin kappt.
+  Auf einer 16-A-Installation würde er echte 16 A starten — genau die im PR dokumentierte
+  Verhaltensänderung.
+
+## Regressionstest
+
+`tools/regression_test_charging.py` — braucht **kein Auto und keine Sonne**, läuft also auch nachts.
+Liest die Wahrheit per Modbus TCP direkt aus Register 261 (Daheimladen-Register 91), nicht über MQTT:
+Die Firmware publiziert den Stromwert nur im Bereich 6–16 A, und genau die 0 A sind hier interessant.
+
+```bash
+set -a; . ~/dev/homeassistant/.env; set +a
+python3 tools/regression_test_charging.py
+```
+
+Deckt ab: Seeding aus der Hardware beim Boot, Sollwert überlebt Disable + Telemetrie-Reads von 0 A,
+Clamping, Fallback beim Enable mit Null-Sollwert. Pausiert die HA-Automation und stellt sie danach
+wieder her. **Hätte den ersten (falschen) Fix sofort gefangen.**
+
 ## Debugging ohne serielle Konsole
 
 - `[env:esp32]` baut mit `-D LOGGING_LEVEL_ERROR`, d. h. `Logger::Info/Debug/Trace` sind wegkompiliert.
