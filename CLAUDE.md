@@ -44,13 +44,15 @@ Kandidaten für einen PR an Boris — reine Bugs, unabhängig von der evcc-Disku
   gesendet. Ohne Retain findet ein neu startendes HA nichts unter `homeassistant/+/+/config`;
   alles mit `command_topic` (beide Switches + Number) bleibt `unavailable`, bis der ESP zufällig
   reconnected. Sensoren überleben, weil sie laufend State publishen.
-- **`SetChargingEnabled` war auf einen Zustandswechsel gegated** (`HeidelbergWallbox.cpp`):
-  `mChargingEnabled` liegt nur im RAM und steht nach jedem Reboot auf `true`, während Register 261
-  noch 0 hält → der Zweig, der beides synchronisieren würde, feuert nie. Schreibt jetzt bei **jedem**
-  Aufruf; damit ist die Operation idempotent und selbstheilend (die HA-Automation reasserted alle 30 s).
-  Verschärfend: `GetChargingCurrentLimit()` überschreibt `mChargingCurrentLimitA` in jedem
-  Publish-Zyklus aus Register 261. Steht das auf 0, wird beim Ausschalten `mPrevious… = 0` gemerkt und
-  beim nächsten Einschalten 0 A wiederhergestellt — Laden „an", Strom 0.
+- **Ladezustand wurde erfunden statt gelesen** (`HeidelbergWallbox.cpp`, `.h`, `Constants.h`).
+  Zwei unabhängige Ursachen:
+  1. `Init()` schrieb 262/258/257, las aber **nie** Register 261 → `mChargingEnabled` startete auf dem
+     Header-Default `true`, egal was die Wallbox tat. Liest und seedet jetzt.
+  2. `GetChargingCurrentLimit()` (Telemetrie, läuft im Publish-Zyklus **und** über Modbus TCP) schrieb
+     sein Messergebnis in dasselbe Member wie der Sollwert. Ein einziger 0-A-Read zerstörte den Sollwert.
+  Sollwert und Messwert sind jetzt getrennt (`mRequested…` / `mObserved…`); `mPrevious…` entfällt.
+  `SetChargingEnabled` schreibt bei jedem Aufruf. Clamping auf {0, 6..16 A} schließt außerdem UB beim
+  `float`→`uint16_t`-Cast negativer Werte.
 
 ## Widerlegt — nicht nochmal „reparieren"
 
@@ -60,6 +62,10 @@ Kandidaten für einen PR an Boris — reine Bugs, unabhängig von der evcc-Disku
   Konstruktor begrenzt korrekt, `setLen()` nullterminiert. Upstream-Code ist hier korrekt.
   (Einzige echte Unsauberkeit: `String::copy` macht `memmove(cstr, length + 1)`, liest also ein Byte
   über die Payload hinaus. `setLen()` überschreibt es — praktisch folgenlos.)
+- **Erster Anlauf des Ladezustand-Fixes war selbst falsch.** „Register bei jedem `SetChargingEnabled`
+  schreiben" allein reicht **nicht**: der Getter vergiftet `mChargingCurrentLimitA` weiterhin mit 0,
+  und der idempotente Write schreibt diese 0 dann zuverlässig zurück. Zwei unabhängige adversariale
+  Reviews (Codex, Fable) haben das gekillt. Ohne die Trennung von Soll- und Messwert ist der Fix wertlos.
 - **Ungeklärt:** Beim ursprünglichen Debugging schaltete `turn_on` den Switch gar nicht um, obwohl
   der Code das tun müsste. Nicht reproduziert. Verdächtig bleibt, dass `gMqttTopic`, `TopicBuffer`
   und `PayloadBuffer` ohne Lock zwischen Publish-Timer-Task und MQTT-Callback-Task geteilt werden.
