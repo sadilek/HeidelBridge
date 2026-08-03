@@ -66,52 +66,64 @@ VehicleState HeidelbergWallbox::GetState()
     return mState;
 }
 
+namespace
+{
+    // Unconditionally writes the wallbox current limit register (Heidelberg reg. 261).
+    // Register 0 A means "charging blocked"; 6-16 A means "charge at up to this current".
+    bool WriteCurrentLimitRegister(float currentLimitA)
+    {
+        const uint16_t rawCurrent = static_cast<uint16_t>(currentLimitA / Constants::HeidelbergWallbox::CurrentFactor);
+        if (!ModbusRTU::Instance()->WriteHoldRegister16(Constants::HeidelbergRegisters::MaximalCurrent, rawCurrent))
+        {
+            Logger::Error("Heidelberg wallbox: ERROR: Could not set maximum charging current");
+            return false;
+        }
+        return true;
+    }
+}
+
 bool HeidelbergWallbox::SetChargingCurrentLimit(float currentLimitA)
 {
     if (mChargingEnabled)
     {
         mChargingCurrentLimitA = currentLimitA;
         Logger::Info("Heidelberg wallbox: setting charging current limit to %f A", mChargingCurrentLimitA);
-
-        uint16_t rawCurrent = static_cast<uint16_t>(mChargingCurrentLimitA / Constants::HeidelbergWallbox::CurrentFactor);
-        if (!ModbusRTU::Instance()->WriteHoldRegister16(Constants::HeidelbergRegisters::MaximalCurrent, rawCurrent))
-        {
-            // Error writing modbus register
-            Logger::Error("Heidelberg wallbox: ERROR: Could not set maximum charging current");
-        }
-    }
-    else
-    {
-        mPreviousChargingCurrentLimitA = currentLimitA;
-        Logger::Info("Heidelberg wallbox: charging is disabled. current limit %f A is not applied", mChargingCurrentLimitA);
+        return WriteCurrentLimitRegister(mChargingCurrentLimitA);
     }
 
+    // While charging is disabled the register must stay at 0. Remember the
+    // requested value so enabling restores it.
+    mPreviousChargingCurrentLimitA = currentLimitA;
+    Logger::Info("Heidelberg wallbox: charging is disabled. current limit %f A is not applied", currentLimitA);
     return true;
 }
 
 bool HeidelbergWallbox::SetChargingEnabled(bool chargingEnabled)
 {
-    bool ok = true;
-
-    if (!mChargingEnabled && chargingEnabled)
+    // NOTE: mChargingEnabled is RAM-only state and says nothing about what is
+    // actually in register 261 -- after a reboot the flag defaults to true while
+    // the wallbox still holds 0 A. So this must NOT be gated on a state
+    // transition: every call re-writes the register, making the operation
+    // idempotent and self-healing. Callers may safely reassert on every cycle.
+    if (chargingEnabled)
     {
-        Logger::Info("Heidelberg wallbox: enabling charging");
-
-        // Enable charging
-        mChargingEnabled = true;
-        ok = SetChargingCurrentLimit(mPreviousChargingCurrentLimitA);
+        if (!mChargingEnabled)
+        {
+            Logger::Info("Heidelberg wallbox: enabling charging");
+            mChargingEnabled = true;
+            mChargingCurrentLimitA = mPreviousChargingCurrentLimitA;
+        }
+        return WriteCurrentLimitRegister(mChargingCurrentLimitA);
     }
-    else if (mChargingEnabled && !chargingEnabled)
+
+    if (mChargingEnabled)
     {
         Logger::Info("Heidelberg wallbox: disabling charging");
-
-        // Disable charging
         mPreviousChargingCurrentLimitA = mChargingCurrentLimitA;
-        ok = SetChargingCurrentLimit(0.0f);
         mChargingEnabled = false;
     }
-
-    return ok;
+    mChargingCurrentLimitA = 0.0f;
+    return WriteCurrentLimitRegister(0.0f);
 }
 
 bool HeidelbergWallbox::IsChargingEnabled()

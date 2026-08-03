@@ -58,7 +58,14 @@ namespace MQTTManager
         StringUtils::InsertString(topic, TopicBuffer, sizeof(TopicBuffer), '%', Settings::Instance()->DeviceName.c_str());
         StringUtils::InsertString(payload, PayloadBuffer, sizeof(PayloadBuffer), '%', Settings::Instance()->DeviceName.c_str());
 
-        gMqttClient.publish(TopicBuffer, 1, false, PayloadBuffer);
+        // Discovery MUST be retained. It is only published on MQTT connect, so
+        // without the retain flag a Home Assistant restart finds nothing on
+        // homeassistant/+/+/config and the entities that have no periodic state
+        // publish (the switches and the number, i.e. everything with a
+        // command_topic) stay "unavailable" until this device happens to
+        // reconnect. Retained discovery is delivered to HA the moment it
+        // subscribes.
+        gMqttClient.publish(TopicBuffer, 1, true, PayloadBuffer);
     }
 
     // Publishes MQTT discovery messages for Home Assistant integration
@@ -74,7 +81,7 @@ namespace MQTTManager
                 "payload_on":"1",
                 "payload_off":"0",
                 "unique_id":"%_is_vehicle_connected",
-                "default_entity_id":"%_is_vehicle_connected",
+                "default_entity_id":"binary_sensor.%_is_vehicle_connected",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
         PublishHomeAssistantDiscoveryTopic(
@@ -86,7 +93,7 @@ namespace MQTTManager
                 "payload_on":"1",
                 "payload_off":"0",
                 "unique_id":"%_is_vehicle_charging",
-                "default_entity_id":"%_is_vehicle_charging",
+                "default_entity_id":"binary_sensor.%_is_vehicle_charging",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
         PublishHomeAssistantDiscoveryTopic(
@@ -97,7 +104,7 @@ namespace MQTTManager
                 "state_class":"measurement",
                 "state_topic":"%/charging_power",
                 "unique_id":"%_charging_power",
-                "default_entity_id":"%_charging_power",
+                "default_entity_id":"sensor.%_charging_power",
                 "unit_of_measurement":"W",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
@@ -109,7 +116,7 @@ namespace MQTTManager
                 "state_class":"measurement",
                 "state_topic":"%/charging_current/phase1",
                 "unique_id":"%_charging_current_phase1",
-                "default_entity_id":"%_charging_current_phase1",
+                "default_entity_id":"sensor.%_charging_current_phase1",
                 "unit_of_measurement":"A",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
@@ -121,7 +128,7 @@ namespace MQTTManager
                 "state_class":"measurement",
                 "state_topic":"%/charging_current/phase2",
                 "unique_id":"%_charging_current_phase2",
-                "default_entity_id":"%_charging_current_phase2",
+                "default_entity_id":"sensor.%_charging_current_phase2",
                 "unit_of_measurement":"A",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
@@ -133,7 +140,7 @@ namespace MQTTManager
                 "state_class":"measurement",
                 "state_topic":"%/charging_current/phase3",
                 "unique_id":"%_charging_current_phase3",
-                "default_entity_id":"%_charging_current_phase3",
+                "default_entity_id":"sensor.%_charging_current_phase3",
                 "unit_of_measurement":"A",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
@@ -145,7 +152,7 @@ namespace MQTTManager
                 "state_class":"measurement",
                 "state_topic":"%/charging_current_limit",
                 "unique_id":"%_charging_current_limit",
-                "default_entity_id":"%_charging_current_limit",
+                "default_entity_id":"sensor.%_charging_current_limit",
                 "unit_of_measurement":"A",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
@@ -157,7 +164,7 @@ namespace MQTTManager
                 "state_topic":"%/energy_meter",
                 "state_class":"total_increasing",
                 "unique_id":"%_energy_meter",
-                "default_entity_id":"%_energy_meter",
+                "default_entity_id":"sensor.%_energy_meter",
                 "unit_of_measurement":"kWh",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
@@ -169,7 +176,7 @@ namespace MQTTManager
                 "state_class":"measurement",
                 "state_topic":"%/temperature",
                 "unique_id":"%_temperature",
-                "default_entity_id":"%_temperature",
+                "default_entity_id":"sensor.%_temperature",
                 "unit_of_measurement":"°C",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
@@ -181,7 +188,7 @@ namespace MQTTManager
                 "state_class":"measurement",
                 "state_topic":"%/charging_voltage/phase1",
                 "unique_id":"%_charging_voltage_phase1",
-                "default_entity_id":"%_charging_voltage_phase1",
+                "default_entity_id":"sensor.%_charging_voltage_phase1",
                 "unit_of_measurement":"V",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
@@ -193,7 +200,7 @@ namespace MQTTManager
                 "state_class":"measurement",
                 "state_topic":"%/charging_voltage/phase2",
                 "unique_id":"%_charging_voltage_phase2",
-                "default_entity_id":"%_charging_voltage_phase2",
+                "default_entity_id":"sensor.%_charging_voltage_phase2",
                 "unit_of_measurement":"V",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
@@ -205,7 +212,7 @@ namespace MQTTManager
                 "state_class":"measurement",
                 "state_topic":"%/charging_voltage/phase3",
                 "unique_id":"%_charging_voltage_phase3",
-                "default_entity_id":"%_charging_voltage_phase3",
+                "default_entity_id":"sensor.%_charging_voltage_phase3",
                 "unit_of_measurement":"V",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
 
@@ -215,8 +222,8 @@ namespace MQTTManager
                 "name":"Enable Charging",
                 "state_topic":"%/enable_charging",
                 "command_topic":"%/control/enable_charging",
-                "unique_id":"%control_enable_charging",
-                "default_entity_id":"%control_enable_charging",
+                "unique_id":"%_control_enable_charging",
+                "default_entity_id":"switch.%_control_enable_charging",
                 "payload_on":"ON",
                 "payload_off":"OFF",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
@@ -228,7 +235,7 @@ namespace MQTTManager
                 "state_topic":"%/standby_enabled",
                 "command_topic":"%/control/standby",
                 "unique_id":"%_control_standby",
-                "default_entity_id":"%_control_standby",
+                "default_entity_id":"switch.%_control_standby",
                 "payload_on":"ON",
                 "payload_off":"OFF",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
@@ -244,7 +251,7 @@ namespace MQTTManager
                 "step":1,
                 "unit_of_measurement":"A",
                 "unique_id":"%_control_charging_current_limit",
-                "default_entity_id":"%_control_charging_current_limit",
+                "default_entity_id":"number.%_control_charging_current_limit",
                 "device":{"identifiers":["%"],"name":"%","model":"EnergyControl","manufacturer":"Heidelberg"}})");
     }
 
@@ -374,27 +381,45 @@ namespace MQTTManager
     // Callback for MQTT messages
     void OnMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
     {
+        // AsyncMqttClient hands us a pointer into its receive buffer that is NOT
+        // null-terminated, and large payloads arrive in chunks. Copy the bytes out
+        // into a terminated buffer before touching them as a string.
+        if (index != 0 || len != total)
+        {
+            Logger::Error("Ignoring chunked MQTT payload (len=%u total=%u)", (unsigned)len, (unsigned)total);
+            return;
+        }
+
+        char cmdBuffer[32];
+        const size_t copyLen = len < sizeof(cmdBuffer) - 1 ? len : sizeof(cmdBuffer) - 1;
+        memcpy(cmdBuffer, payload, copyLen);
+        cmdBuffer[copyLen] = '\0';
+
+        String cmd(cmdBuffer);
+        cmd.trim();
+
+        // Diagnostic echo: lets the received command be inspected from the broker
+        // without a serial console (trace logging is compiled out in release builds).
+        gMqttClient.publish(gMqttTopic.SetString("/internal/last_command"), 0, false, cmd.c_str());
+
+        // Accept the common truthy spellings, not just Home Assistant's "ON".
+        const bool isOn = cmd.equalsIgnoreCase("ON") || cmd.equalsIgnoreCase("TRUE") || cmd == "1";
+
         if (strcmp(gMqttTopic.SetString("/control/charging_current_limit"), topic) == 0)
         {
-            float current = String(payload, len).toFloat();
-            Logger::Trace("Received MQTT control command: charging current limit = %f\n", current);
+            const float current = cmd.toFloat();
+            Logger::Info("Received MQTT control command: charging current limit = %f", current);
             gWallbox->SetChargingCurrentLimit(current);
         }
         else if (strcmp(gMqttTopic.SetString("/control/enable_charging"), topic) == 0)
         {
-            String cmd(payload, len);
-            cmd.trim();
-            Logger::Trace("Received MQTT control command: enable_charging = %s", cmd.c_str());
-            bool enableCharging = cmd.equalsIgnoreCase("ON");
-            gWallbox->SetChargingEnabled(enableCharging);
+            Logger::Info("Received MQTT control command: enable_charging = %s", cmd.c_str());
+            gWallbox->SetChargingEnabled(isOn);
         }
         else if (strcmp(gMqttTopic.SetString("/control/standby"), topic) == 0)
         {
-            String cmd(payload, len);
-            cmd.trim();
-            Logger::Trace("Received MQTT control command: standby = %s", cmd.c_str());
-            bool enableStandby = cmd.equalsIgnoreCase("ON");
-            gWallbox->SetStandbyEnabled(enableStandby);
+            Logger::Info("Received MQTT control command: standby = %s", cmd.c_str());
+            gWallbox->SetStandbyEnabled(isOn);
         }
     }
 
