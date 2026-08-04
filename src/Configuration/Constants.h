@@ -98,5 +98,6 @@ namespace Constants
     namespace MQTT
     {
         constexpr uint16_t PublishIntervalMs = 500;
+        constexpr uint8_t MaxPublishAttempts = 5;
     };
 };
