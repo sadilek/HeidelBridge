@@ -32,27 +32,34 @@ Hintergrund: evcc prüft seit 2026-07 in `charger/daheimladen.go` per `checkStat
 (→ `sponsorship required`). Upstream 4.0.0 meldet diese Seriennummer bewusst. Diese Firmware
 beantwortet nur exakte Startadressen, nicht den Block — deshalb war evcc nicht mehr nutzbar.
 
-## Bekannte Firmware-Fallstricke (hier gefixt, upstream noch offen)
+## Firmware-Fixes — alle upstream gemergt (2026-08-04)
 
-Kandidaten für einen PR an Boris — reine Bugs, unabhängig von der evcc-Diskussion:
+Nichts davon ist noch fork-spezifisch. Historie für den Fall, dass die Symptome wieder auftauchen:
 
-- **`default_entity_id` ohne Domain-Präfix** (`MQTTManager.cpp`): HA verlangt `domain.object_id`.
-  Ohne den Punkt scheitert `cv.entity_id`, alle 15 Entities landen als `unnamed_device`, und
-  „Recreate entity IDs" verweigert die Arbeit (HA hält die IDs für explizit gesetzt).
-  Das ist auch die Ursache von Upstream-Issue #58.
-- **Discovery muss `retain=true` sein** (`MQTTManager.cpp`): Discovery wird nur beim MQTT-Connect
-  gesendet. Ohne Retain findet ein neu startendes HA nichts unter `homeassistant/+/+/config`;
-  alles mit `command_topic` (beide Switches + Number) bleibt `unavailable`, bis der ESP zufällig
-  reconnected. Sensoren überleben, weil sie laufend State publishen.
-- **Ladezustand wurde erfunden statt gelesen** (`HeidelbergWallbox.cpp`, `.h`, `Constants.h`).
-  Zwei unabhängige Ursachen:
-  1. `Init()` schrieb 262/258/257, las aber **nie** Register 261 → `mChargingEnabled` startete auf dem
-     Header-Default `true`, egal was die Wallbox tat. Liest und seedet jetzt.
-  2. `GetChargingCurrentLimit()` (Telemetrie, läuft im Publish-Zyklus **und** über Modbus TCP) schrieb
-     sein Messergebnis in dasselbe Member wie der Sollwert. Ein einziger 0-A-Read zerstörte den Sollwert.
-  Sollwert und Messwert sind jetzt getrennt (`mRequested…` / `mObserved…`); `mPrevious…` entfällt.
-  `SetChargingEnabled` schreibt bei jedem Aufruf. Clamping auf {0, 6..16 A} schließt außerdem UB beim
-  `float`→`uint16_t`-Cast negativer Werte.
+- **#73** `default_entity_id` ohne Domain-Präfix → alle 15 Entities landeten als `unnamed_device`,
+  und „Recreate entity IDs" verweigerte die Arbeit. Dazu: Discovery muss `retain=true` sein, sonst
+  bleibt nach einem HA-Neustart alles mit `command_topic` `unavailable`.
+- **#74** Ladezustand wurde erfunden statt gelesen. `Init()` las Register 261 nie, und
+  `GetChargingCurrentLimit()` (Telemetrie) schrieb sein Messergebnis in dasselbe Member wie den
+  Sollwert — ein einziger 0-A-Read zerstörte ihn. Soll- und Messwert sind jetzt getrennt.
+- **#75** `Init()` schrieb Register 258, merkte sich den Wert aber nicht → `mStandbyEnabled` blieb auf
+  dem Default. Fiel nur auf, wenn Reads fehlschlugen (Symptom in Issue #72).
+
+Boris' Edits beim Mergen: `ClampToWallboxRange` und `WriteCurrentLimitRegister` sind jetzt **private
+Member** statt Free Functions in einer anonymen Namespace, und `InitialChargingCurrentLimitA` ist als
+`MaxChargingCurrentA` definiert statt 16.0f zu wiederholen. Er kürzt außerdem Kommentare im Code
+konsequent — Commit-Messages lässt er unangetastet.
+
+## Was in `kupa5` bewusst von upstream abweicht
+
+Beim nächsten Upstream-Merge nicht wegwerfen:
+
+- **`unique_id` des Enable-Charging-Switch** hat bei uns einen Unterstrich
+  (`%_control_enable_charging`), upstream fehlt er. Nicht auf upstream zurückdrehen: HA würde die
+  bestehende Entity verwaisen lassen und eine neue anlegen — die HA-Automation referenziert sie per
+  Entity-ID.
+- **Diagnose-Echo** nach `{DeviceName}/internal/last_command`. Bewusst nicht upstream vorgeschlagen,
+  weil es öffentliche Topic-Fläche hinzufügt.
 
 ## Widerlegt — nicht nochmal „reparieren"
 
