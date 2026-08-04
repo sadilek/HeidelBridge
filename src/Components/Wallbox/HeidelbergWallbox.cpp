@@ -149,8 +149,8 @@ bool HeidelbergWallbox::SetChargingEnabled(bool chargingEnabled)
         return WriteCurrentLimitRegister(0.0f);
     }
 
-    // Not a clamp: enabling with a zero setpoint would leave charging blocked, so
-    // fall back to the default rather than to 0 A.
+    // A setpoint below the minimum would leave charging blocked, which contradicts
+    // the request to enable it. Fall back to the default.
     if (mRequestedChargingCurrentLimitA < Constants::HeidelbergWallbox::MinChargingCurrentA)
     {
         mRequestedChargingCurrentLimitA = Constants::HeidelbergWallbox::InitialChargingCurrentLimitA;
