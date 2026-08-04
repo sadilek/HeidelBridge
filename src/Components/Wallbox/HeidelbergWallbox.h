@@ -31,15 +31,11 @@ public:
 
 private:
     VehicleState mState{VehicleState::Disconnected};
-    // What we want the wallbox to do. Only ever changed by SetChargingCurrentLimit,
-    // never by a telemetry read, so it always represents intent.
-    float mRequestedChargingCurrentLimitA{Constants::HeidelbergWallbox::InitialChargingCurrentLimitA};
-    // What the wallbox last reported (register 261). Observation, not intent.
-    float mObservedChargingCurrentLimitA{0.0f};
+    float mRequestedChargingCurrentLimitA{Constants::HeidelbergWallbox::InitialChargingCurrentLimitA}; // intent
+    float mObservedChargingCurrentLimitA{0.0f};                                                        // last read back
     float mFailsafeCurrentA{0.0f};
     float mLastPowerMeterValueW{0.0f};
     float mLastEnergyMeterValueWh{0.0f};
-    // Seeded from the wallbox in Init(); see the comment there.
-    bool mChargingEnabled{true};
+    bool mChargingEnabled{true}; // seeded from the wallbox in Init()
     bool mStandbyEnabled{true}; // default: standby enabled
 };
