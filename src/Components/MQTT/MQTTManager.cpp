@@ -26,7 +26,15 @@ namespace MQTTManager
     char TopicBuffer[128];
     char PayloadBuffer[1024];
     char AvailabilityTopic[128];
+    // gMqttTopic is written by PublishStatusMessages(), which runs on the main
+    // loop task. The AsyncMqttClient callbacks run on the AsyncTCP task, so they
+    // must NOT share it: SetString() and the publish() that reads the buffer are
+    // not atomic, and a callback landing in between makes the publish go out on
+    // whatever topic the callback just built. That is how a retained "OFF" state
+    // ends up on .../control/enable_charging, which this device is subscribed to
+    // and then obeys, disabling charging roughly every 30 s.
     PrefixedString gMqttTopic(128);
+    PrefixedString gMqttTopicAsync(128);
 
     constexpr uint16_t NumMqttPublishedValues = 10;
     enum MqttPublishedValues
@@ -378,15 +386,15 @@ namespace MQTTManager
         Logger::Info("Connected to MQTT");
 
         // Subscribe to control topics
-        gMqttClient.subscribe(gMqttTopic.SetString("/control/charging_current_limit"), 2);
-        gMqttClient.subscribe(gMqttTopic.SetString("/control/enable_charging"), 2);
-        gMqttClient.subscribe(gMqttTopic.SetString("/control/standby"), 2);
+        gMqttClient.subscribe(gMqttTopicAsync.SetString("/control/charging_current_limit"), 2);
+        gMqttClient.subscribe(gMqttTopicAsync.SetString("/control/enable_charging"), 2);
+        gMqttClient.subscribe(gMqttTopicAsync.SetString("/control/standby"), 2);
 
         // Publish version information
         String versionString = String(Version::Major) + "." + String(Version::Minor) + "." + String(Version::Patch);
-        gMqttClient.publish(gMqttTopic.SetString("/version"), 0, true, versionString.c_str());
-        gMqttClient.publish(gMqttTopic.SetString("/build_date"), 0, true, __DATE__);
-        gMqttClient.publish(gMqttTopic.SetString("/ip_address"), 0, true, WiFi.localIP().toString().c_str());
+        gMqttClient.publish(gMqttTopicAsync.SetString("/version"), 0, true, versionString.c_str());
+        gMqttClient.publish(gMqttTopicAsync.SetString("/build_date"), 0, true, __DATE__);
+        gMqttClient.publish(gMqttTopicAsync.SetString("/ip_address"), 0, true, WiFi.localIP().toString().c_str());
 
         // Birth message: signals the device is back online (counterpart to the LWT)
         gMqttClient.publish(AvailabilityTopic, 1, true, "online");
@@ -413,14 +421,14 @@ namespace MQTTManager
         const char *match = "none";
         String parsed;
 
-        if (strcmp(gMqttTopic.SetString("/control/charging_current_limit"), topic) == 0)
+        if (strcmp(gMqttTopicAsync.SetString("/control/charging_current_limit"), topic) == 0)
         {
             match = "current_limit";
             float current = String(payload, len).toFloat();
             parsed = String(current);
             gWallbox->SetChargingCurrentLimit(current);
         }
-        else if (strcmp(gMqttTopic.SetString("/control/enable_charging"), topic) == 0)
+        else if (strcmp(gMqttTopicAsync.SetString("/control/enable_charging"), topic) == 0)
         {
             match = "enable_charging";
             String cmd(payload, len);
@@ -428,7 +436,7 @@ namespace MQTTManager
             parsed = cmd;
             gWallbox->SetChargingEnabled(cmd.equalsIgnoreCase("ON"));
         }
-        else if (strcmp(gMqttTopic.SetString("/control/standby"), topic) == 0)
+        else if (strcmp(gMqttTopicAsync.SetString("/control/standby"), topic) == 0)
         {
             match = "standby";
             String cmd(payload, len);
@@ -444,7 +452,7 @@ namespace MQTTManager
         // buffer shared with the publish timer task.
         String raw(payload, len);
         String diag = String("topic=") + topic + " raw='" + raw + "' len=" + String((unsigned)len) + " match=" + match + " parsed='" + parsed + "' enabled=" + (gWallbox->IsChargingEnabled() ? "1" : "0");
-        gMqttClient.publish(gMqttTopic.SetString("/internal/last_command"), 0, false, diag.c_str());
+        gMqttClient.publish(gMqttTopicAsync.SetString("/internal/last_command"), 0, false, diag.c_str());
     }
 
     // Callback for MQTT publish
@@ -459,6 +467,7 @@ namespace MQTTManager
         Logger::Info("Initializing MQTT");
 
         gMqttTopic.SetPrefix(Settings::Instance()->DeviceName.c_str());
+        gMqttTopicAsync.SetPrefix(Settings::Instance()->DeviceName.c_str());
 
         gWallbox = wallbox;
 
