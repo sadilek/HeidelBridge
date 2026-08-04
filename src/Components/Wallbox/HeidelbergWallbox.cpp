@@ -10,6 +10,37 @@ HeidelbergWallbox *HeidelbergWallbox::Instance()
     return &instance;
 }
 
+namespace
+{
+    // The wallbox accepts 0 A or 6-16 A. Below the minimum means blocked, which is
+    // also what a client writing 0 to stop charging expects.
+    float ClampToWallboxRange(float currentLimitA)
+    {
+        if (currentLimitA < Constants::HeidelbergWallbox::MinChargingCurrentA)
+        {
+            return 0.0f;
+        }
+        if (currentLimitA > Constants::HeidelbergWallbox::MaxChargingCurrentA)
+        {
+            return Constants::HeidelbergWallbox::MaxChargingCurrentA;
+        }
+        return currentLimitA;
+    }
+
+    // 0 A blocks charging, 6-16 A permits it
+    bool WriteCurrentLimitRegister(float currentLimitA)
+    {
+        const uint16_t rawCurrent = static_cast<uint16_t>(currentLimitA / Constants::HeidelbergWallbox::CurrentFactor);
+        if (!ModbusRTU::Instance()->WriteHoldRegister16(Constants::HeidelbergRegisters::MaximalCurrent, rawCurrent))
+        {
+            // Error writing modbus register
+            Logger::Error("Heidelberg wallbox: ERROR: Could not set maximum charging current");
+            return false;
+        }
+        return true;
+    }
+}
+
 void HeidelbergWallbox::Init()
 {
     uint16_t rawCurrent = static_cast<uint16_t>(Constants::HeidelbergWallbox::FailSafeCurrentA / Constants::HeidelbergWallbox::CurrentFactor);
@@ -47,12 +78,10 @@ void HeidelbergWallbox::Init()
 
         if (mChargingEnabled)
         {
-            // Adopt what the wallbox is already applying, clamped: the register is
-            // 16 bit and another controller may have left a larger value in it.
-            mRequestedChargingCurrentLimitA =
-                mObservedChargingCurrentLimitA > Constants::HeidelbergWallbox::MaxChargingCurrentA
-                    ? Constants::HeidelbergWallbox::MaxChargingCurrentA
-                    : mObservedChargingCurrentLimitA;
+            // Adopt what the wallbox is already applying. Clamped because the
+            // register is 16 bit and another controller may have left a larger
+            // value in it.
+            mRequestedChargingCurrentLimitA = ClampToWallboxRange(mObservedChargingCurrentLimitA);
         }
 
         Logger::Info("Heidelberg wallbox: seeded state from register: %f A, charging %s",
@@ -92,35 +121,9 @@ VehicleState HeidelbergWallbox::GetState()
     return mState;
 }
 
-namespace
-{
-    // 0 A blocks charging, 6-16 A permits it
-    bool WriteCurrentLimitRegister(float currentLimitA)
-    {
-        const uint16_t rawCurrent = static_cast<uint16_t>(currentLimitA / Constants::HeidelbergWallbox::CurrentFactor);
-        if (!ModbusRTU::Instance()->WriteHoldRegister16(Constants::HeidelbergRegisters::MaximalCurrent, rawCurrent))
-        {
-            // Error writing modbus register
-            Logger::Error("Heidelberg wallbox: ERROR: Could not set maximum charging current");
-            return false;
-        }
-        return true;
-    }
-}
-
 bool HeidelbergWallbox::SetChargingCurrentLimit(float currentLimitA)
 {
-    // Clamp to what the wallbox accepts. Below the minimum means blocked, which is
-    // also what a client writing 0 to stop charging expects.
-    if (currentLimitA < Constants::HeidelbergWallbox::MinChargingCurrentA)
-    {
-        currentLimitA = 0.0f;
-    }
-    else if (currentLimitA > Constants::HeidelbergWallbox::MaxChargingCurrentA)
-    {
-        currentLimitA = Constants::HeidelbergWallbox::MaxChargingCurrentA;
-    }
-
+    currentLimitA = ClampToWallboxRange(currentLimitA);
     mRequestedChargingCurrentLimitA = currentLimitA;
 
     if (!mChargingEnabled)
@@ -146,7 +149,8 @@ bool HeidelbergWallbox::SetChargingEnabled(bool chargingEnabled)
         return WriteCurrentLimitRegister(0.0f);
     }
 
-    // Enabling with a zero setpoint would leave charging blocked.
+    // Not a clamp: enabling with a zero setpoint would leave charging blocked, so
+    // fall back to the default rather than to 0 A.
     if (mRequestedChargingCurrentLimitA < Constants::HeidelbergWallbox::MinChargingCurrentA)
     {
         mRequestedChargingCurrentLimitA = Constants::HeidelbergWallbox::InitialChargingCurrentLimitA;
