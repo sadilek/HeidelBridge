@@ -73,10 +73,29 @@ Beim nächsten Upstream-Merge nicht wegwerfen:
   schreiben" allein reicht **nicht**: der Getter vergiftet `mChargingCurrentLimitA` weiterhin mit 0,
   und der idempotente Write schreibt diese 0 dann zuverlässig zurück. Zwei unabhängige adversariale
   Reviews (Codex, Fable) haben das gekillt. Ohne die Trennung von Soll- und Messwert ist der Fix wertlos.
-- **Ungeklärt:** Beim ursprünglichen Debugging schaltete `turn_on` den Switch gar nicht um, obwohl
-  der Code das tun müsste. Nicht reproduziert. Verdächtig bleibt, dass `gMqttTopic`, `TopicBuffer`
-  und `PayloadBuffer` ohne Lock zwischen Publish-Timer-Task und MQTT-Callback-Task geteilt werden.
-  Bei `match=none` im Diagnose-Echo genau dort suchen.
+- **Geklärt (2026-08-04): der geteilte Topic-Puffer war ein echter Race.** `gMqttTopic` wurde aus zwei
+  Tasks beschrieben — `PublishStatusMessages()` im Main-Loop, die AsyncMqttClient-Callbacks im
+  AsyncTCP-Task. `SetString()` und das `publish()`, das den Puffer liest, sind nicht atomar. Landete
+  ein Callback dazwischen, ging der Publish auf das Topic, das der Callback gerade gebaut hatte.
+  Konkret: der **retained** State `enable_charging` = „OFF" landete auf
+  `HeidelBridge/control/enable_charging` — ein Topic, das das Gerät selbst abonniert. Es las seinen
+  eigenen State als Kommando und schaltete das Laden ab, alle ~30 s und zusätzlich bei jedem
+  Reconnect (retained). Das erklärt auch das am 2026-08-03 als ungeklärt notierte „`turn_on` bewirkt
+  nichts". Fix: eigener `PrefixedString` für die Callbacks, damit jeder Puffer genau einen Schreiber
+  hat. **Achtung:** beide brauchen `SetPrefix()` — ohne das gehen die Subscriptions still auf
+  `/control/...` statt `HeidelBridge/control/...` und es kommt gar kein Kommando mehr an.
+  Noch offen (bisher nicht auffällig): `TopicBuffer`/`PayloadBuffer` in
+  `PublishHomeAssistantDiscoveryTopic` werden weiterhin aus beiden Tasks benutzt.
+
+## Retained Nachrichten auf Command-Topics prüfen
+
+Symptom „Laden geht nach jedem Reconnect sofort wieder aus": auf `{DeviceName}/control/*` liegt eine
+retained Nachricht. Löschen mit leerem Payload und `retain: true` — **Achtung**, die Firmware liest
+das leere Payload als Kommando (`""` ≠ `"ON"` → aus), also danach einen Zyklus abwarten.
+
+Was tatsächlich auf den Topics liegt, sieht man nicht am Diagnose-Echo der Firmware, sondern nur mit
+einem eigenen MQTT-Sensor auf dem Command-Topic — der Diagnose-String wird erst *nach* dem
+Modbus-Write gebaut, seine `topic`/`payload`-Zeiger können dann schon überschrieben sein.
 
 **Wichtig:** `unique_id`s nicht mehr ändern — HA legt sonst eine neue Entity an und die Historie geht
 verloren.
