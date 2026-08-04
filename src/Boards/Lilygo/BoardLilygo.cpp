@@ -9,7 +9,7 @@
 // ESP32 GPIO21 -> MAXRS485 DE+RE
 constexpr uint8_t PinRX = GPIO_NUM_21;
 constexpr uint8_t PinTX = GPIO_NUM_22;
-constexpr uint8_t PinRTS = GPIO_NUM_21;
+constexpr uint8_t PinRTS = GPIO_NUM_17;
 
 // Additional pins
 constexpr uint8_t Pin_5V_EN = 16;
