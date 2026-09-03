@@ -149,19 +149,27 @@ wieder her. **Hätte den ersten (falschen) Fix sofort gefangen.**
 
 - `origin` nutzt **SSH** (`git@github.com:sadilek/HeidelBridge.git`). Damit funktioniert `git push` unabhängig davon, welcher Account in `gh auth` aktiv ist — kein HTTPS-Token/osxkeychain-Problem.
 
-## Energiezähler geht nach Stromausfall zurück (Test 2026-09-03)
+## Energiezähler geht nach Stromausfall zurück (Test 2026-09-03) — gelöst per Offset
 
 Register 17/18 („Energy since Installation") sichert die Wallbox **nur beim Übergang in den
 Standby** ins EEPROM. Da die Firmware Standby verbietet (Register 258 = 4, `AllowStandby = false`),
-fällt der Zähler nach jedem Stromausfall auf den Stand der letzten Standby-Sicherung zurück
+fällt das Register nach jedem Stromausfall auf den Stand der letzten Standby-Sicherung zurück
 (2026-08-31: 874,63 → 775,88 kWh, der Wert vom 2026-08-03). Mit Sicherungs-Tests bestätigt:
 Standby aus → Rückfall; Standby 15 min erlaubt, dann Stromausfall → Stand bleibt.
 
 Standby erlauben ist keine Option: ~13 min nach dem Einschalten antwortet die schlafende Box nicht
 mehr auf Modbus, die Hauptschleife hängt in Timeouts/Retries, der MQTT-Keepalive reißt und HA sieht
-alle 30–60 s `unavailable`. Zwischen Sicherungs-Aus und HeidelBridge-Neustart steht der Standby-
-Schalter danach wieder auf aus, weil `Init()` 258 = 4 schreibt.
+alle 30–60 s `unavailable`. Nach einem HeidelBridge-Neustart steht der Standby-Schalter wieder auf
+aus, weil `Init()` 258 = 4 schreibt.
 
-Offener Punkt: einen im NVS persistierten Offset führen (höchster je gesehener Wert; bei Rückfall
-Differenz als Offset addieren) und `Register + Offset` publizieren. Bis dahin wird die HA-Statistik
-nach einem Stromausfall mit `battery_sim/stats_tool.py adjust` im homeassistant-Repo korrigiert.
+**Lösung (2026-09-03):** `src/Components/Wallbox/EnergyCounter.{h,cpp}` hält im NVS einen Offset
+und den zuletzt publizierten Stand (`energy_offset`, `energy_hwm`). Publiziert wird `raw + offset`,
+nur in persistierten 10-Wh-Schritten und beim Laden höchstens alle 30 s (Flash-Wear: im 11-kW-
+Dauerlauf 33 statt 5,5 Jahre, Rechnung in `docs/EnergyCounterDesign.md`), und jeder unplausible Sprung des Registers (Rückfall oder
+Anstieg schneller als 11 kW) wird nach 30 s Bestätigung per Offset überbrückt. Nur
+`HeidelbergWallbox::Update()` (Hauptschleife, alle 5 s) liest das Register; MQTT und Modbus-TCP
+lesen den Cache. Design und Verlaufstabelle: `docs/EnergyCounterDesign.md`. Unit-Tests:
+`pio test -e native` (hardwarefrei, `test/test_energy_counter/`). Diagnose: MQTT
+`internal/energy_offset_wh` / `internal/energy_raw_wh`, Web-UI Abschnitt „Energy Meter" (Zähler
+dort setzen = Rebase, z. B. nach NVS-Verlust). Nach dem ersten Boot mit leerem NVS publiziert
+`energy_meter` 30 s lang nichts, danach den Registerwert als Baseline (kein Sprung in HA).
