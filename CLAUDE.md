@@ -148,3 +148,20 @@ wieder her. **Hätte den ersten (falschen) Fix sofort gefangen.**
 ## Push-Auth (GitHub)
 
 - `origin` nutzt **SSH** (`git@github.com:sadilek/HeidelBridge.git`). Damit funktioniert `git push` unabhängig davon, welcher Account in `gh auth` aktiv ist — kein HTTPS-Token/osxkeychain-Problem.
+
+## Energiezähler geht nach Stromausfall zurück (Test 2026-09-03)
+
+Register 17/18 („Energy since Installation") sichert die Wallbox **nur beim Übergang in den
+Standby** ins EEPROM. Da die Firmware Standby verbietet (Register 258 = 4, `AllowStandby = false`),
+fällt der Zähler nach jedem Stromausfall auf den Stand der letzten Standby-Sicherung zurück
+(2026-08-31: 874,63 → 775,88 kWh, der Wert vom 2026-08-03). Mit Sicherungs-Tests bestätigt:
+Standby aus → Rückfall; Standby 15 min erlaubt, dann Stromausfall → Stand bleibt.
+
+Standby erlauben ist keine Option: ~13 min nach dem Einschalten antwortet die schlafende Box nicht
+mehr auf Modbus, die Hauptschleife hängt in Timeouts/Retries, der MQTT-Keepalive reißt und HA sieht
+alle 30–60 s `unavailable`. Zwischen Sicherungs-Aus und HeidelBridge-Neustart steht der Standby-
+Schalter danach wieder auf aus, weil `Init()` 258 = 4 schreibt.
+
+Offener Punkt: einen im NVS persistierten Offset führen (höchster je gesehener Wert; bei Rückfall
+Differenz als Offset addieren) und `Register + Offset` publizieren. Bis dahin wird die HA-Statistik
+nach einem Stromausfall mit `battery_sim/stats_tool.py adjust` im homeassistant-Repo korrigiert.
