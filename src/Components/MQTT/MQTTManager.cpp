@@ -245,7 +245,7 @@ namespace MQTTManager
         PublishHomeAssistantDiscoveryTopic(
             "homeassistant/switch/%/control_enable_charging/config",
             R"({
-                "name":"Enable Charging",
+                "name":"Enable charging",
                 "state_topic":"%/enable_charging",
                 "command_topic":"%/control/enable_charging",
                 "availability_topic":"%/status",
@@ -258,7 +258,7 @@ namespace MQTTManager
         PublishHomeAssistantDiscoveryTopic(
             "homeassistant/switch/%/control_standby/config",
             R"({
-                "name":"Standby Mode",
+                "name":"Standby mode",
                 "state_topic":"%/standby_enabled",
                 "command_topic":"%/control/standby",
                 "availability_topic":"%/status",
@@ -271,7 +271,7 @@ namespace MQTTManager
         PublishHomeAssistantDiscoveryTopic(
             "homeassistant/number/%/control_charging_current_limit/config",
             R"({
-                "name":"Charging Current Limit",
+                "name":"Charging current limit",
                 "command_topic":"%/control/charging_current_limit",
                 "state_topic":"%/charging_current_limit",
                 "availability_topic":"%/status",
@@ -317,7 +317,8 @@ namespace MQTTManager
             case (MqttPublishedValues::ChargingCurrentLimit):
             {
                 float chargingCurrentLimit = gWallbox->GetChargingCurrentLimit();
-                if (chargingCurrentLimit >= 6.0f && chargingCurrentLimit <= 16.0f) // Only publish valid current limits
+                // 0 A is a valid reading (charging blocked/disabled), not just 6-16 A. Only reject out-of-range garbage.
+                if (chargingCurrentLimit == 0.0f || (chargingCurrentLimit >= 6.0f && chargingCurrentLimit <= 16.0f))
                 {
                     gMqttClient.publish(gMqttTopic.SetString("/charging_current_limit"), 0, false, String(chargingCurrentLimit).c_str());
                 }
@@ -359,6 +360,7 @@ namespace MQTTManager
                 gMqttClient.publish(gMqttTopic.SetString("/internal/mqtt_disconnects"), 0, false, String(gStatistics.NumMqttDisconnects).c_str());
                 gMqttClient.publish(gMqttTopic.SetString("/internal/modbus_read_errors"), 0, false, String(gStatistics.NumModbusReadErrors).c_str());
                 gMqttClient.publish(gMqttTopic.SetString("/internal/modbus_write_errors"), 0, false, String(gStatistics.NumModbusWriteErrors).c_str());
+                gMqttClient.publish(gMqttTopic.SetString("/internal/wifi_rssi"), 0, false, String(WiFi.RSSI()).c_str());
                 break;
 
             case (MqttPublishedValues::Discovery):

@@ -28,6 +28,7 @@ The following topics are published by HeidelBridge:
 | {DeviceName}/internal/mqtt_disconnects    | -    | Integer   | Total number of MQTT connection losses since start.                     |
 | {DeviceName}/internal/modbus_read_errors  | -    | Integer   | Total number of Modbus RTU read errors since start.                     |
 | {DeviceName}/internal/modbus_write_errors | -    | Integer   | Total number of Modbus RTU write errors since start.                    |
+| {DeviceName}/internal/wifi_rssi           | dBm  | Integer   | Current WiFi signal strength (RSSI). Closer to 0 is better.             |
 
 The following topics are subscribed by HeidelBridge. Use these to control your wallbox:
 
