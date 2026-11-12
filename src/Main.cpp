@@ -96,10 +96,15 @@ void loop()
     gWallbox->Update();
   }
 
-  if (Settings::Instance()->IsMqttEnabled && gMqttUpdater.IsElapsed())
+  if (Settings::Instance()->IsMqttEnabled)
   {
-    gMqttUpdater.Restart();
-    MQTTManager::Update();
+    MQTTManager::ProcessEvents();
+
+    if (gMqttUpdater.IsElapsed())
+    {
+      gMqttUpdater.Restart();
+      MQTTManager::Update();
+    }
   }
 
   WifiManager::Instance()->Update();

@@ -9,16 +9,15 @@ Modbus TCP server (Daheimladen register 91). MQTT is deliberately NOT used for
 verification, because the firmware only publishes the current limit when it is
 within 6-16 A -- and 0 A is exactly the value these tests care about.
 
-What it covers:
+What it covers (firmware >= 5.0.0, where the current limit is the only
+charging control; 0 A blocks charging):
 
-  1. Init() seeds the enabled flag from the wallbox rather than assuming it.
-  2. A telemetry read of 0 A does not destroy the requested current limit.
-     This is the regression that matters: GetChargingCurrentLimit() used to
-     write its reading into the same member as the setpoint, so disabling and
-     re-enabling restored 0 A and charging silently never started.
-  3. Requests are clamped to the 0 or 6-16 A the wallbox accepts.
-  4. Enabling with a zero setpoint falls back to the default instead of
-     writing 0 A and leaving charging blocked.
+  1. A requested limit is written to register 261, and 0 A blocks charging.
+  2. A telemetry read of 0 A does not change what the next request writes.
+  3. Requests are clamped to the 0 or 6-16 A the wallbox accepts, and the
+     wallbox's own hardware maximum applies on top.
+  4. Retained and malformed commands are ignored instead of changing the
+     charging state.
 
 Usage:
     export HA_URL=... HA_TOKEN=...          # required
@@ -57,78 +56,43 @@ def read_limit_amps():
     )
     sock = socket.create_connection((DEVICE, 502), timeout=8)
     try:
-        sock.sendall(frame)
-        response = sock.recv(256)
-    finally:
-        sock.close()
-    if len(response) < 11 or response[7] & 0x80:
-        raise RuntimeError("Modbus exception or short frame: " + response.hex())
-    return struct.unpack(">H", response[9:11])[0] / 10.0
-
-
-def call_service(service, payload):
-    request = urllib.request.Request(
-        f"{HA_URL}/api/services/{service}",
-        data=json.dumps(payload).encode(),
-        headers={"Authorization": "Bearer " + HA_TOKEN, "Content-Type": "application/json"},
-        method="POST",
-    )
-    urllib.request.urlopen(request, timeout=10).read()
-
-
-def command(topic, value):
-    call_service(
-        "mqtt/publish",
-        {"topic": f"{DEVICE_NAME}/control/{topic}", "payload": str(value), "qos": 2},
-    )
-    time.sleep(SETTLE_S)
-
-
-def check(label, expected, actual):
-    ok = abs(expected - actual) < 0.05
-    print(f"  [{'PASS' if ok else 'FAIL'}] {label}")
-    print(f"         register 261 = {actual} A, expected {expected} A")
-    if not ok:
-        failures.append(label)
-
-
-def main():
-    if AUTOMATION:
-        print(f"Pausing {AUTOMATION} so it cannot fight the test")
-        call_service("automation/turn_off", {"entity_id": AUTOMATION})
-        time.sleep(SETTLE_S)
-
-    try:
         # The wallbox enforces its own maximum (a hardware setting), so a request
         # of 16 A may come back lower. Everything below is expressed against that
         # cap rather than against a hard-coded 16 A.
-        command("enable_charging", "ON")
         command("charging_current_limit", 16)
         cap = read_limit_amps()
         probe = 8.0 if cap >= 8.0 else 6.0
         print(f"\nWallbox hardware maximum: {cap} A (probe current {probe} A)\n")
 
-        print("1. Requested limit survives a disable and telemetry reads of 0 A")
+        print("1. Requested limits reach the register, 0 A blocks charging")
         command("charging_current_limit", probe)
-        check("limit applied while enabled", probe, read_limit_amps())
-        command("enable_charging", "OFF")
-        check("disable writes 0 A", 0.0, read_limit_amps())
+        check("limit applied", probe, read_limit_amps())
+        command("charging_current_limit", 0)
+        check("0 A blocks charging", 0.0, read_limit_amps())
+
+        print("\n2. Telemetry reads of 0 A do not leak into the next request")
         print("       waiting 12 s so telemetry definitely observes 0 A ...")
         time.sleep(12)
-        command("enable_charging", "ON")
-        check("enable restores the requested limit, not 0", probe, read_limit_amps())
+        command("charging_current_limit", probe)
+        check("next request writes its own value", probe, read_limit_amps())
 
-        print("\n2. Clamping of out-of-range requests")
+        print("\n3. Clamping of out-of-range requests")
         command("charging_current_limit", 3)
         check("sub-minimum request becomes 0 A (blocked)", 0.0, read_limit_amps())
+        command("charging_current_limit", 40)
+        check("over-maximum request is capped", cap, read_limit_amps())
 
-        print("\n3. Enabling with a zero setpoint falls back to the default")
-        command("enable_charging", "ON")
-        check("fallback applies the default limit", cap, read_limit_amps())
+        print("\n4. Retained and malformed commands are ignored")
+        command("charging_current_limit", 0)
+        command("charging_current_limit", probe, retain=True)
+        clear_retained("charging_current_limit")
+        check("retained command ignored", 0.0, read_limit_amps())
+        command("charging_current_limit", "abc")
+        check("malformed command ignored", 0.0, read_limit_amps())
 
     finally:
-        print("\nRestoring: charging disabled")
-        command("enable_charging", "OFF")
+        print("\nRestoring: charging blocked (0 A)")
+        command("charging_current_limit", 0)
         if AUTOMATION:
             call_service("automation/turn_on", {"entity_id": AUTOMATION})
             print(f"Re-enabled {AUTOMATION}")

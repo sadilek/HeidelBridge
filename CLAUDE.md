@@ -70,12 +70,14 @@ konsequent — Commit-Messages lässt er unangetastet.
 
 Beim nächsten Upstream-Merge nicht wegwerfen:
 
-- **`unique_id` des Enable-Charging-Switch** hat bei uns einen Unterstrich
-  (`%_control_enable_charging`), upstream fehlt er. Nicht auf upstream zurückdrehen: HA würde die
-  bestehende Entity verwaisen lassen und eine neue anlegen — die HA-Automation referenziert sie per
-  Entity-ID.
+- **Seit Upstream 5.0.0 (Merge 2026-11-12) gibt es keinen Enable-Charging-Switch mehr.** Laden wird
+  nur noch über `control/charging_current_limit` gesteuert (0 = gesperrt, 6–16 A erlaubt, 0,1-A-Schritte).
+  Die frühere Fork-Abweichung (`unique_id` `%_control_enable_charging` mit Unterstrich) ist damit
+  hinfällig. Retained Commands ignoriert die Firmware seit 5.0.0, HA muss ohne Retain senden.
 - **Diagnose-Echo** nach `{DeviceName}/internal/last_command`. Bewusst nicht upstream vorgeschlagen,
-  weil es öffentliche Topic-Fläche hinzufügt.
+  weil es öffentliche Topic-Fläche hinzufügt. Seit 5.0.0 (`EchoCommand()` in `MQTTManager.cpp`):
+  `topic=… raw='…' len=… match=current_limit|standby|none parsed='…' result=queued|invalid|ignored_retained|ignored_fragmented|ignored_unknown_topic`.
+  `queued` heißt nur „an die Hauptschleife übergeben"; das Feld `enabled=` gibt es nicht mehr.
 
 ## Widerlegt — nicht nochmal „reparieren"
 
@@ -137,8 +139,8 @@ set -a; . ~/dev/homeassistant/.env; set +a
 python3 tools/regression_test_charging.py
 ```
 
-Deckt ab: Seeding aus der Hardware beim Boot, Sollwert überlebt Disable + Telemetrie-Reads von 0 A,
-Clamping, Fallback beim Enable mit Null-Sollwert. Pausiert die HA-Automation und stellt sie danach
+Deckt ab (seit 5.0.0): Sollwert landet im Register, 0 A sperrt, Telemetrie-Reads von 0 A beeinflussen
+den nächsten Request nicht, Clamping, retained und ungültige Commands werden ignoriert. Pausiert die HA-Automation und stellt sie danach
 wieder her. **Hätte den ersten (falschen) Fix sofort gefangen.**
 
 ## Debugging ohne serielle Konsole
