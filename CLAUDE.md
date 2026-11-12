@@ -9,6 +9,22 @@ Project-specific notes for this fork of HeidelBridge (ESP32 firmware for Heidelb
 - **`kupa5`** ist der Arbeits-Branch mit allen eigenen Anpassungen. Upstream wird per **Merge** (nicht Rebase) eingezogen, da `kupa5` gepusht/geteilt ist (kein force-push).
 - Eigene Anpassungen möglichst **additiv** halten (neue Dateien statt Upstream-Dateien editieren) → minimiert Merge-Konflikte.
 
+### Working through Obeya
+
+- Obeya's main branch for this repository is `kupa5` (set in Obeya's configuration on the
+  owner's machine, not in `.obeya/settings.json`). Cards start from `kupa5`, and approved work
+  lands there locally, without a pull request (`land: "main"`). Nothing is pushed: the owner pushes
+  `kupa5` to `origin` themselves. Do not push `kupa5`.
+- When a card's task asks for the change upstream as well ("auch als PR an upstream"), the
+  upstream PR comes in addition, after the owner approved and the work landed on `kupa5`. Create
+  a branch from `upstream/main` in a separate worktree (do not switch the card's branch), carry
+  the change over without fork-specific parts (Kupa5 board, `last_command` echo, the `unique_id`
+  underscore, CLAUDE.md), build it with `pio run -e esp32`, push the branch to `origin` and open
+  the PR against `BorisBrock/HeidelBridge` `main` with `gh pr create -R BorisBrock/HeidelBridge
+  --head sadilek:<branch>`. Report it with Obeya's `pr_opened`. Obeya then watches it and
+  forwards Boris' review comments, and the card stays open until he merges. Example:
+  BorisBrock/HeidelBridge#82 (`feature/monotonic-energy-counter`).
+
 ## Kupa5-Hardware-Anpassungen
 
 - **`src/Boards/Kupa5/BoardKupa5.{h,cpp}`**: RS485-Pins RX=GPIO16, TX=GPIO17, RTS=-1 (Auto-Mode). Registriert in `src/Boards/BoardFactory.cpp`.
