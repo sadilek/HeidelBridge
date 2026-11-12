@@ -46,7 +46,14 @@ von nichts mehr benutzt. Steuerlogik: `~/dev/homeassistant/ha_config/wallbox.yam
 Hintergrund: evcc prüft seit 2026-07 in `charger/daheimladen.go` per `checkStation()` einen
 22-Register-Block ab Reg. 32 und lehnt zusätzlich die Seriennummer `heidelbridge` ab
 (→ `sponsorship required`). Upstream 4.0.0 meldet diese Seriennummer bewusst. Diese Firmware
-beantwortet nur exakte Startadressen, nicht den Block — deshalb war evcc nicht mehr nutzbar.
+beantwortete bis 2026-11-12 nur exakte Startadressen, nicht den Block — deshalb war evcc nicht mehr nutzbar.
+
+Since 2026-11-12 (issue #83) the Modbus TCP server answers block reads through
+`src/Components/Modbus/DaheimladenRegisterMap.{h,cpp}`: any range inside the map, every Uint16
+followed by an unused register as on a Daheimladen box. Registers outside the map (2–5, 14–27,
+30–31, 70–86, 93–108, from 115) still give exception 2. evcc without a token now stops with
+`sponsorship required`; that is intended, do not fake another serial. Check on the device with
+`tools/modbus_read.py [host] [start] [count]` (default: evcc's block, 22 from 32).
 
 ## Firmware-Fixes — alle upstream gemergt (2026-08-04)
 
